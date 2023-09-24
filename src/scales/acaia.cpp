@@ -21,9 +21,9 @@ enum class AcaiaEventKey : uint8_t {
   STOP = 9,
 };
 
-const BLEUUID serviceUUID("49535343-fe7d-4ae5-8fa9-9fafd205e455");
-const BLEUUID weightCharacteristicUUID("49535343-1e4d-4bd9-ba61-23c647249616");
-const BLEUUID commandCharacteristicUUID("49535343-8841-43f4-a8d4-ecbe34729bb3");
+const BLEUUID serviceUUID("00001820-0000-1000-8000-00805f9b34fb");
+const BLEUUID weightCharacteristicUUID("00002a80-0000-1000-8000-00805f9b34fb");
+const BLEUUID commandCharacteristicUUID("00002a80-0000-1000-8000-00805f9b34fb");
 
 std::string byteArrayToHexString(const uint8_t* byteArray, size_t length) {
   std::string hexString;
@@ -52,13 +52,15 @@ bool AcaiaScales::connect() {
   RemoteScales::log("Connecting to %s[%s]\n", RemoteScales::getDevice()->getName().c_str(), RemoteScales::getDevice()->getAddress().toString().c_str());
   bool result = client->connect(RemoteScales::getDevice());
   if (!result) {
+    RemoteScales::log("Failed to connect to %s[%s]\n", RemoteScales::getDevice()->getName().c_str(), RemoteScales::getDevice()->getAddress().toString().c_str());
     client.release();
     return false;
   }
 
-  client->setMTU(247);
+  // client->setMTU(247);
 
   if (!performConnectionHandshake()) {
+    RemoteScales::log("Failed to perform connection handshake\n");
     return false;
   }
   subscribeToNotifications();
@@ -76,7 +78,7 @@ void AcaiaScales::disconnect() {
 }
 
 bool AcaiaScales::isConnected() {
-  return client != nullptr && client->isConnected();
+  return client.get() != nullptr && client->isConnected();
 }
 
 void AcaiaScales::update() {
@@ -85,7 +87,8 @@ void AcaiaScales::update() {
     disconnect();
     connect();
     markedForReconnection = false;
-  } else {
+  }
+  else {
     sendHeartbeat();
   }
 }
@@ -106,11 +109,30 @@ void AcaiaScales::notifyCallback(
   size_t length,
   bool isNotify
 ) {
+
+  // Print out the raw data for debugging purposes
   decodeAndHandleNotification(pData, length);
 }
+  // EF DD 0C 
+  // 08 05 00 00 00 00 02 00 0A 05 
+  // EF DD 0C 
+  // 08 05 00 00 00 00 02 00 0A 05 
+  // EF DD 0C 
+
+  // If data contains a header, we will have to save the message start and concatenate the next message to it.
+
+  // EF DD 0C 08 05 00 00 00 00 02 00 0A 05 
+  // EF DD 0C 08 05 00 00 00 00 02 00 0A 05 
+  // EF DD 0C 08 05 00 00 00 00 02 00 0A 05 
+  // EF DD 0C 08 05 00 00 00 00 02 00 0A 05 
+
 
 void AcaiaScales::decodeAndHandleNotification(uint8_t* data, size_t length) {
+  // Serial.println(byteArrayToHexString(data, length).c_str());
+  // Print out the raw data for debugging purposes
   int messageStart = -1;
+  // Save last data that start with header
+  static uint8_t lastData[20];
 
   for (size_t i = 0; i < length - 1; i++) {
     if (data[i] == static_cast<uint8_t>(AcaiaHeader::HEADER1) && data[i + 1] == static_cast<uint8_t>(AcaiaHeader::HEADER2)) {
@@ -118,11 +140,18 @@ void AcaiaScales::decodeAndHandleNotification(uint8_t* data, size_t length) {
       break;
     }
   }
-
-  if (messageStart < 0 || length - messageStart < 6) {
-    RemoteScales::log("Invalid message - Unexpected header: %s\n", byteArrayToHexString(data, length).c_str());
+  if (messageStart >0) {
+    memcpy(lastData, data + messageStart, length - messageStart);
+    Serial.println(byteArrayToHexString(lastData, sizeof(lastData)).c_str());
     return;
   }
+  if (messageStart < 0 || length - messageStart < 6) {
+    // RemoteScales::log("Invalid message - Unexpected header: %s\n", byteArrayToHexString(data, length).c_str());
+    return;
+  }
+
+
+  Serial.println(byteArrayToHexString(data, length).c_str());
 
   size_t messageEnd = messageStart + data[messageStart + 3] + 5;
   size_t messageLength = messageEnd - messageStart;
@@ -263,8 +292,10 @@ float AcaiaScales::decodeTime(const uint8_t* timePayload) {
 bool AcaiaScales::performConnectionHandshake() {
   RemoteScales::log("Performing handshake\n");
 
+  RemoteScales::log("Check if connected ? %s\n", client->isConnected() ? "true" : "false");
   service = client->getService(serviceUUID);
   if (service == nullptr) {
+    RemoteScales::log("Failed to get service\n");
     client->disconnect();
     return false;
   }
@@ -280,12 +311,23 @@ bool AcaiaScales::performConnectionHandshake() {
 
   // Subscribe
   BLERemoteDescriptor* notifyDescriptor = weightCharacteristic->getDescriptor(BLEUUID((uint16_t)0x2902));
+
+  // For old-style scales, we need to hardcode the write to the client config descriptor 
+  // Handle value 
+  // Write simular logic in cpp self.device.writeCharacteristic(14,bytearray([0x01,0x00]))
+  
+
+
+  
   RemoteScales::log("Got notifyDescriptor\n");
+
   if (notifyDescriptor != nullptr) {
+    RemoteScales::log("Writing to notifyDescriptor\n");
     uint8_t value[2] = { 0x01, 0x00 };
     notifyDescriptor->writeValue(value, 2, true);
   }
   else {
+    RemoteScales::log("Failed to get notifyDescriptor\n");
     client->disconnect();
     return false;
   }
@@ -328,8 +370,10 @@ void AcaiaScales::sendMessage(AcaiaMessageType msgType, const uint8_t* payload, 
 };
 
 void AcaiaScales::sendId() {
+  RemoteScales::log("Sending ID\n");
   const uint8_t payload[] = { 0x2d,0x2d,0x2d,0x2d,0x2d,0x2d,0x2d,0x2d,0x2d,0x2d,0x2d,0x2d,0x2d,0x2d,0x2d };
   sendMessage(AcaiaMessageType::IDENTIFY, payload, 15, false);
+  RemoteScales::log("ID sent\n");
 }
 
 void AcaiaScales::sendNotificationRequest() {
@@ -372,15 +416,15 @@ void AcaiaScales::subscribeToNotifications() {
 
   auto callback = [this](BLERemoteCharacteristic* characteristic, uint8_t* data, size_t length, bool isNotify) {
     notifyCallback(characteristic, data, length, isNotify);
-  };
+    };
 
   if (weightCharacteristic->canNotify()) {
     RemoteScales::log("Registering callback for weight characteristic\n");
     weightCharacteristic->registerForNotify(callback);
   }
 
-  if (commandCharacteristic->canNotify()) {
-    RemoteScales::log("Registering callback for command characteristic\n");
-    commandCharacteristic->registerForNotify(callback);
-  }
+  // if (commandCharacteristic->canNotify()) {
+  //   RemoteScales::log("Registering callback for command characteristic\n");
+  //   commandCharacteristic->registerForNotify(callback);
+  // }
 }
