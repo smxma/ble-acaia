@@ -2,6 +2,7 @@
 #include <BLEDevice.h>
 #include "remote_scales.h"
 #include "scales/acaia.h"
+#include <ctime>
 
 struct Scales
 {
@@ -11,13 +12,18 @@ struct Scales
 
 void onWeightReceived(float weight)
 {
-    Serial.println("Weight received: " + String(weight));
+    std::time_t t = std::time(nullptr);
+    std::tm tm = *std::localtime(&t);
+    char buffer[20];
+    std::strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", &tm);
+    Serial.println(String(buffer) + ";" + String(weight));
 }
 
 namespace blescales
 {
     RemoteScalesScanner remoteScalesScanner;
     std::unique_ptr<RemoteScales> bleScales;
+    bool bMaintainConnection = true;
 
     void bleScalesTask(void *params);
 
@@ -37,6 +43,37 @@ namespace blescales
             bleScales->tare();
         }
     }
+
+    void disconnect()
+    {
+        if (bleScales.get() != nullptr)
+        {
+            bleScales->disconnect();
+        }
+    }
+
+
+    void connect()
+    {
+        if (bleScales.get() != nullptr)
+        {
+            bleScales->connect();
+        }
+    }
+
+
+    std::pair<std::string, std::string> getDeviceCharacteristic()
+    {
+        std::string _deviceName;
+        std::string _deviceAddress;
+        if (bleScales.get() != nullptr)
+        {
+            _deviceName = bleScales->getDeviceName();
+            _deviceAddress = bleScales->getDeviceAddress();
+        }
+        return {_deviceName, _deviceAddress};
+    }
+
 
     std::vector<Scales> getAvailableScales()
     {
@@ -71,8 +108,12 @@ namespace blescales
 
         for (;;)
         {
-            handleBleDevice();
-            maintainConnection();
+            // Check if we need to maintain a connection to a scale.
+            if (bMaintainConnection)
+            {
+                handleBleDevice();
+                maintainConnection();
+            }
             vTaskDelay(1000 / portTICK_PERIOD_MS);
         }
     }
@@ -82,19 +123,19 @@ namespace blescales
         if (!BLEDevice::getInitialized())
         {
             Serial.println("Initializing BLE device...");
-            BLEDevice::init("Gaggiuino");
+            BLEDevice::init("ESP32 old-ACAIA LUNAR Scales Client");
         }
 
         if (BLEDevice::getInitialized())
         {
-            // Serial.println("BLE device initialized.");
+            Serial.println("BLE device initialized.");
         }
     }
 
     void maintainConnection()
     {
         if (bleScales.get() == nullptr)
-        { // No scale discovered yet. Keep checking scan results to find scales.
+        { 
             remoteScalesScanner.initializeAsyncScan();
 
             std::vector<RemoteScales *> scales = remoteScalesScanner.getDiscoveredScales();
@@ -111,23 +152,21 @@ namespace blescales
                 Serial.println("Connected to scale.");
                 Serial.println("Device name: " + String(bleScales->getDeviceName().c_str()));
                 Serial.println("Device address: " + String(bleScales->getDeviceAddress().c_str()));
-
             }
         }
         else if (!bleScales->isConnected())
-        { // Scale discovered but not connected. Make sure it's still reachable.
+        { 
             Serial.println("Connection failed. Will retry.");
             remoteScalesScanner.stopAsyncScan();
             bleScales.release();
         }
         else if (bleScales->isConnected())
-        { // Scale stil connected. Invoke update to keep alive.
+        { 
             remoteScalesScanner.stopAsyncScan();
             bleScales->update();
         }
     }
 }
-
 
 void setup()
 {
@@ -148,15 +187,45 @@ void setup()
 
 void loop()
 {
-    // Nothing to do here. All the work is done in the task.
-
-    //Tare if "ta" is received from serial
     if (Serial.available() > 0)
     {
         String input = Serial.readStringUntil('\n');
-        if (input == "tare")
+        switch (input[0])
         {
-            blescales::tare();
+            case 't':
+                blescales::tare();
+                break;
+            case 'c':
+                blescales::connect();
+                blescales::bMaintainConnection = true;
+                break;
+            case 'd':
+                blescales::disconnect();
+                blescales::bMaintainConnection = false;
+                break;
+            case 'r':
+                break;
+            case 'g':
+                if (input == "getDeviceCharacteristic")
+                {
+                    std::pair<std::string, std::string> deviceCharacteristic = blescales::getDeviceCharacteristic();
+                    std::string name = deviceCharacteristic.first;
+                    std::string address = deviceCharacteristic.second;
+                    Serial.println(String("Name: ") + name.c_str());
+                    Serial.println(String("Address: ") + address.c_str());
+                }
+                else if (input == "getAvailableScales")
+                {
+                    auto scales = blescales::getAvailableScales();
+                    for (auto scale : scales)
+                    {
+                        Serial.println(String("Name: ") + scale.name.c_str());
+                        Serial.println(String("Address: ") + scale.address.c_str());
+                    }
+                }
+                break;
+            default:
+                break;
         }
     }
 }

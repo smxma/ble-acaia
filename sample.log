@@ -1,0 +1,110 @@
+Scale[ACAIAL12119] Got weightCharacteristic and commandCharacteristic
+
+Scale[ACAIAL12119] Got notifyDescriptor
+
+Scale[ACAIAL12119] Writing to notifyDescriptor
+
+Scale[ACAIAL12119] Sending ID
+
+Scale[ACAIAL12119] ID sent
+
+Scale[ACAIAL12119] Send ID
+
+Scale[ACAIAL12119] Sent notification request
+
+Scale[ACAIAL12119] subscribeToNotifications
+
+Scale[ACAIAL12119] Registering callback for weight characteristic
+
+EF DD 0C 
+
+08 05 08 00 00 00 
+
+Scale[ACAIAL12119] Registering callback for command characteristic
+
+Weight received: 0.00
+Connected to scale.
+Device name: ACAIAL12119
+Device address: 00:1c:97:19:21:19
+Is connected: 1
+
+
+EF DD 0C 
+08 05 08 00 00 00 02 02 12 07 
+EF DD 0C 
+08 05 07 00 00 00 02 02 11 07 
+EF DD 0C 
+08 05 07 00 00 00 02 02 11 07 
+EF DD 0C 
+08 05 07 00 00 00 02 02 11 07 
+EF DD 0C 
+08 05 07 00 00 00 02 02 11 07 
+EF DD 0C 
+08 05 06 00 00 00 02 02 10 07 
+EF DD 0C 
+08 05 06 00 00 00 02 02 10 07 
+EF DD 0C 
+08 05 06 00 00 00 02 02 10 07 
+EF DD 0C
+
+
+// Write a cpp function that take data and length as parameters and send it via Serial 
+// If data is start with EF DD 0C and data lenght is 3 then it is a message start save it in a static variable 
+// and concatenate it with the next data
+// When data like 08 05 08 00 00 00 02 02 12 07 is received then 
+// This data will be reformated as EF DD 0C 08 05 08 00 00 00 02 02 12 07 and send it via Serial
+
+ 
+
+
+
+08 05 00 00 00 00 02 00 0A 05 
+
+Scale[ACAIAL12119] messageStart: 0
+
+Scale[ACAIAL12119] length: 3
+
+EF DD 0C 
+
+Scale[ACAIAL12119] messageStart: -1
+
+Scale[ACAIAL12119] length: 10
+
+08 05 00 00 00 00 02 00 0A 05 
+
+BLE device initialized.
+Scale[ACAIAL12119] messageStart: 0
+
+Scale[ACAIAL12119] length: 3
+
+EF DD 0C 
+
+Scale[ACAIAL12119] messageStart: -1
+
+Scale[ACAIAL12119] length: 10
+
+08 05 00 00 00 00 02 00 0A 05 
+
+Scale[ACAIAL12119] messageStart: 0
+
+Scale[ACAIAL12119] length: 3
+
+EF DD 0C 
+
+Scale[ACAIAL12119] messageStart: -1
+
+Scale[ACAIAL12119] length: 10
+
+08 05 00 00 00 00 02 00 0A 05 
+
+Scale[ACAIAL12119] messageStart: 0
+
+Scale[ACAIAL12119] length: 3
+
+EF DD 0C 
+
+Scale[ACAIAL12119] messageStart: -1
+
+Scale[ACAIAL12119] length: 10
+
+08 05 00 00 00 00 02 00 0A 05 

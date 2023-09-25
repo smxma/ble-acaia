@@ -100,6 +100,12 @@ bool AcaiaScales::tare() {
   return true;
 };
 
+
+unsigned char AcaiaScales::getBattery() {
+  if (!isConnected()) return false;
+  
+}
+
 //-----------------------------------------------------------------------------------/
 //---------------------------       PRIVATE       -----------------------------------/
 //-----------------------------------------------------------------------------------/
@@ -113,18 +119,18 @@ void AcaiaScales::notifyCallback(
   // Print out the raw data for debugging purposes
   decodeAndHandleNotification(pData, length);
 }
-  // EF DD 0C 
-  // 08 05 00 00 00 00 02 00 0A 05 
-  // EF DD 0C 
-  // 08 05 00 00 00 00 02 00 0A 05 
-  // EF DD 0C 
+// EF DD 0C 
+// 08 05 00 00 00 00 02 00 0A 05 
+// EF DD 0C 
+// 08 05 00 00 00 00 02 00 0A 05 
+// EF DD 0C 
 
-  // If data contains a header, we will have to save the message start and concatenate the next message to it.
+// If data contains a header, we will have to save the message start and concatenate the next message to it.
 
-  // EF DD 0C 08 05 00 00 00 00 02 00 0A 05 
-  // EF DD 0C 08 05 00 00 00 00 02 00 0A 05 
-  // EF DD 0C 08 05 00 00 00 00 02 00 0A 05 
-  // EF DD 0C 08 05 00 00 00 00 02 00 0A 05 
+// EF DD 0C 08 05 00 00 00 00 02 00 0A 05 
+// EF DD 0C 08 05 00 00 00 00 02 00 0A 05 
+// EF DD 0C 08 05 00 00 00 00 02 00 0A 05 
+// EF DD 0C 08 05 00 00 00 00 02 00 0A 05 
 
 
 void AcaiaScales::decodeAndHandleNotification(uint8_t* data, size_t length) {
@@ -132,7 +138,23 @@ void AcaiaScales::decodeAndHandleNotification(uint8_t* data, size_t length) {
   // Print out the raw data for debugging purposes
   int messageStart = -1;
   // Save last data that start with header
-  static uint8_t lastData[20];
+  static uint8_t lastData[30] = "";
+  Serial.println(byteArrayToHexString(data, length).c_str());
+
+
+  if (length == 3 && memcmp(data, "\xEF\xDD", 2) == 0) {
+    // Save last data that start with header
+    memcpy(lastData, data, length);
+    return;
+  }
+  else if (lastData[0] != '\0') {
+    //Modify data to include last data at the beginning
+    uint8_t* newData = new uint8_t[length + 2];
+    memcpy(newData, lastData, 3);
+    memcpy(newData + 3, data, length);
+    data = newData;
+    length += 3;
+  }
 
   for (size_t i = 0; i < length - 1; i++) {
     if (data[i] == static_cast<uint8_t>(AcaiaHeader::HEADER1) && data[i + 1] == static_cast<uint8_t>(AcaiaHeader::HEADER2)) {
@@ -140,26 +162,27 @@ void AcaiaScales::decodeAndHandleNotification(uint8_t* data, size_t length) {
       break;
     }
   }
-  if (messageStart >0) {
-    memcpy(lastData, data + messageStart, length - messageStart);
-    Serial.println(byteArrayToHexString(lastData, sizeof(lastData)).c_str());
-    return;
-  }
+
   if (messageStart < 0 || length - messageStart < 6) {
-    // RemoteScales::log("Invalid message - Unexpected header: %s\n", byteArrayToHexString(data, length).c_str());
+    RemoteScales::log("Invalid message - Unexpected header: %s\n", byteArrayToHexString(data, length).c_str());
     return;
   }
 
 
-  Serial.println(byteArrayToHexString(data, length).c_str());
+
 
   size_t messageEnd = messageStart + data[messageStart + 3] + 5;
   size_t messageLength = messageEnd - messageStart;
 
   if (messageEnd > length) {
+    // print last data and current data
+    Serial.println(String("Last data : ") + byteArrayToHexString(lastData, 30).c_str());
+    Serial.println(String("Current data :") + byteArrayToHexString(data, length).c_str());
     RemoteScales::log("Invalid message - length out of bounds: %s\n", byteArrayToHexString(data, length).c_str());
     return;
   }
+  // Serial.println(byteArrayToHexString(data, length).c_str());
+
 
   AcaiaMessageType messageType = static_cast<AcaiaMessageType>(data[messageStart + 2]);
 
@@ -195,48 +218,49 @@ void AcaiaScales::handleScaleEventPayload(const uint8_t* payload, size_t length)
   else if (eventType == AcaiaEventType::ACK) {
     // Ignore for now.
     // Example: 0B 00 E0 05 5C 17 00 00 01 02 29 48
-    // RemoteScales::log("ACK - %s\n", byteArrayToHexString(payload, length).c_str());
-    // RemoteScales::log("Heartbeat response (weight: %0.1f time: %0.1f)\n", weight, time);
-    // RemoteScales::setWeight(decodeWeight(payload + 4));
+    RemoteScales::log("ACK - %s\n", byteArrayToHexString(payload, length).c_str());
+    RemoteScales::log("Heartbeat response (weight: %0.1f time: %0.1f)\n", RemoteScales::getWeight(), time);
+    RemoteScales::setWeight(decodeWeight(payload + 4));
   }
   else if (eventType == AcaiaEventType::TIMER) {
     // Ignore for now
-    // time = decodeTime(payload + 1);
-    // RemoteScales::log("TIMER - %s", byteArrayToHexString(payload, length).c_str());
-    // RemoteScales::log("Time:  %0.1f\n", time);
+    time = decodeTime(payload + 1);
+    RemoteScales::log("TIMER - %s", byteArrayToHexString(payload, length).c_str());
+    RemoteScales::log("Time:  %0.1f\n", time);
   }
   else if (eventType == AcaiaEventType::KEY) {
     // Ignore for now
-    // AcaiaEventKey eventKey = static_cast<AcaiaEventKey>(payload[1]);
-    // if (eventKey == AcaiaEventKey::TARE) {
-    //   RemoteScales::setWeight(decodeWeight(payload + 2));
-    //   RemoteScales::log("TARE - %s", byteArrayToHexString(payload, length).c_str());
-    //   RemoteScales::log("Tare (weight:  %0.1f)\n", RemoteScales::getWeight());
-    // }
-    // else if (eventKey == AcaiaEventKey::START) {
-    //   RemoteScales::setWeight(decodeWeight(payload + 2));
-    //   RemoteScales::log("START - %s", byteArrayToHexString(payload, length).c_str());
-    //   RemoteScales::log("Start (weight:  %0.1f)\n", RemoteScales::getWeight());
-    // }
-    // else if (eventKey == AcaiaEventKey::STOP) {
-    //   time = decodeTime(payload + 2);
-    //   RemoteScales::setWeight(decodeWeight(payload + 6));
-    //   RemoteScales::log("STOP - %s", byteArrayToHexString(payload, length).c_str());
-    //   RemoteScales::log("Stop (weight:  %0.1f, time:  %0.1f)\n", RemoteScales::getWeight(), time);
-    // }
-    // else if (eventKey == AcaiaEventKey::RESET) {
-    //   time = decodeTime(payload + 2);
-    //   RemoteScales::setWeight(decodeWeight(payload + 6));
-    //   // 08 08 05 00 00 00 00 01 01 13 0E
-    //   // 08 0A 05 03 00 00 00 01 01 18 0E
-    //   RemoteScales::log("RESET - %s", byteArrayToHexString(payload, length).c_str());
-    //   RemoteScales::log("Reset (weight:  %0.1f, time:  %0.1f)\n", RemoteScales::getWeight(), time);
-    // }
-    // else {
-    //   RemoteScales::log("Unknown key %02X(%d) - %s\n", eventKey, eventKey, byteArrayToHexString(payload, length).c_str());
-    // }
+    AcaiaEventKey eventKey = static_cast<AcaiaEventKey>(payload[1]);
+    if (eventKey == AcaiaEventKey::TARE) {
+      RemoteScales::setWeight(decodeWeight(payload + 2));
+      RemoteScales::log("TARE - %s", byteArrayToHexString(payload, length).c_str());
+      RemoteScales::log("Tare (weight:  %0.1f)\n", RemoteScales::getWeight());
+    }
+    else if (eventKey == AcaiaEventKey::START) {
+      RemoteScales::setWeight(decodeWeight(payload + 2));
+      RemoteScales::log("START - %s", byteArrayToHexString(payload, length).c_str());
+      RemoteScales::log("Start (weight:  %0.1f)\n", RemoteScales::getWeight());
+    }
+    else if (eventKey == AcaiaEventKey::STOP) {
+      time = decodeTime(payload + 2);
+      RemoteScales::setWeight(decodeWeight(payload + 6));
+      RemoteScales::log("STOP - %s", byteArrayToHexString(payload, length).c_str());
+      RemoteScales::log("Stop (weight:  %0.1f, time:  %0.1f)\n", RemoteScales::getWeight(), time);
+    }
+    else if (eventKey == AcaiaEventKey::RESET) {
+      time = decodeTime(payload + 2);
+      RemoteScales::setWeight(decodeWeight(payload + 6));
+      // 08 08 05 00 00 00 00 01 01 13 0E
+      // 08 0A 05 03 00 00 00 01 01 18 0E
+      RemoteScales::log("RESET - %s", byteArrayToHexString(payload, length).c_str());
+      RemoteScales::log("Reset (weight:  %0.1f, time:  %0.1f)\n", RemoteScales::getWeight(), time);
+    }
+    else {
+      RemoteScales::log("Unknown key %02X(%d) - %s\n", eventKey, eventKey, byteArrayToHexString(payload, length).c_str());
+    }
   }
   else {
+    
     RemoteScales::log("unknown event type %02x(%d): %s\n", eventType, eventType, byteArrayToHexString(payload, length).c_str());
   }
 }
@@ -315,10 +339,10 @@ bool AcaiaScales::performConnectionHandshake() {
   // For old-style scales, we need to hardcode the write to the client config descriptor 
   // Handle value 
   // Write simular logic in cpp self.device.writeCharacteristic(14,bytearray([0x01,0x00]))
-  
 
 
-  
+
+
   RemoteScales::log("Got notifyDescriptor\n");
 
   if (notifyDescriptor != nullptr) {
@@ -423,8 +447,8 @@ void AcaiaScales::subscribeToNotifications() {
     weightCharacteristic->registerForNotify(callback);
   }
 
-  // if (commandCharacteristic->canNotify()) {
-  //   RemoteScales::log("Registering callback for command characteristic\n");
-  //   commandCharacteristic->registerForNotify(callback);
-  // }
+  if (commandCharacteristic->canNotify()) {
+    RemoteScales::log("Registering callback for command characteristic\n");
+    commandCharacteristic->registerForNotify(callback);
+  }
 }
