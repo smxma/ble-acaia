@@ -18,7 +18,15 @@ enum class AcaiaMessageType : uint8_t {
   STATUS = 8,
   IDENTIFY = 11,
   EVENT = 12,
+  TIMER = 13,
 };
+
+typedef struct {
+  uint8_t battery;
+  std::string units;
+  uint8_t auto_off;
+  bool beep_on;
+} ScaleStatusData;
 
 class AcaiaScales : public RemoteScales {
 
@@ -31,14 +39,16 @@ public:
   bool tare() override;
   unsigned char getBattery();
   unsigned char getSeconds();
+  ScaleStatusData getScaleStatus();
   bool startTimer();
-  bool pauseTimer();
   bool stopTimer();
+  bool resetTimer();
 
 private:
   std::string weightUnits;
   float time;
   uint8_t battery;
+  ScaleStatusData stScale;
 
   uint32_t lastHeartbeat = 0;
 
@@ -70,9 +80,18 @@ private:
 
 class ScaleStatus {
 public:
-  ScaleStatus(uint8_t battery, const std::string& units, uint8_t auto_off, bool beep_on)
-    : battery(battery), units(units), auto_off(auto_off), beep_on(beep_on) {
+  ScaleStatus(ScaleStatusData data)
+    : battery(data.battery), units(data.units), auto_off(data.auto_off), beep_on(data.beep_on) {
   }
+
+  // ScaleStatusData getData() {
+  //   return ScaleStatusData{
+  //     .battery = battery,
+  //     .units = units,
+  //     .auto_off = auto_off,
+  //     .beep_on = beep_on,
+  //   };
+  // }
 
 private:
   uint8_t battery;

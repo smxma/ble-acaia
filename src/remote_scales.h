@@ -24,6 +24,12 @@ public:
   virtual bool connect() = 0;
   virtual void disconnect() = 0;
   virtual void update() = 0;
+  virtual unsigned char getBattery() = 0;
+  virtual bool startTimer() = 0;
+  virtual bool stopTimer() = 0;
+  virtual bool resetTimer() = 0;
+  virtual unsigned char getSeconds() = 0;
+  // virtual ScaleStatusData getScaleStatus() = 0;
 
 protected:
   BLEAdvertisedDevice* getDevice() { return &device; }

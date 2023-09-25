@@ -9,14 +9,26 @@ struct Scales
     std::string name;
     std::string address;
 };
-
+static uint64_t cptWeightReceived = 0;
+static uint64_t oldCptWeightReceived = cptWeightReceived;
 void onWeightReceived(float weight)
 {
-    std::time_t t = std::time(nullptr);
-    std::tm tm = *std::localtime(&t);
-    char buffer[20];
-    std::strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", &tm);
-    Serial.println(String(buffer) + ";" + String(weight));
+    // std::time_t t = std::time(nullptr);
+    // std::tm tm = *std::localtime(&t);
+    // char buffer[20];
+    // std::strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", &tm);
+    // Serial.println(String(buffer) + ";" + String(weight));
+
+    // unsigned char time = blescales::getSeconds();
+    // Serial.print("Time : ");
+    // Serial.print(time);
+    // Serial.print(" | Weight : ");
+    // Serial.println(weight);
+    cptWeightReceived++;
+    if (cptWeightReceived > 1000000)
+    {
+        cptWeightReceived = 0;
+    }
 }
 
 namespace blescales
@@ -52,7 +64,6 @@ namespace blescales
         }
     }
 
-
     void connect()
     {
         if (bleScales.get() != nullptr)
@@ -61,6 +72,57 @@ namespace blescales
         }
     }
 
+    void DisplayBattery()
+    {
+        if (bleScales.get() != nullptr)
+        {
+
+            uint8_t batt = bleScales->getBattery();
+            Serial.println(String("Battery: ") + batt);
+        }
+    }
+
+    void startTimer()
+    {
+        if (bleScales.get() != nullptr)
+        {
+            bleScales->startTimer();
+        }
+    }
+
+    void stopTimer()
+    {
+        if (bleScales.get() != nullptr)
+        {
+            bleScales->stopTimer();
+        }
+    }
+
+    void resetTimer()
+    {
+        if (bleScales.get() != nullptr)
+        {
+            bleScales->resetTimer();
+        }
+    }
+
+    unsigned char getSeconds()
+    {
+        if (bleScales.get() != nullptr)
+        {
+            return bleScales->getSeconds();
+        }
+        return 0;
+    }
+
+    float getWeight()
+    {
+        if (bleScales.get() != nullptr)
+        {
+            return bleScales->getWeight();
+        }
+        return 0;
+    }
 
     std::pair<std::string, std::string> getDeviceCharacteristic()
     {
@@ -73,7 +135,6 @@ namespace blescales
         }
         return {_deviceName, _deviceAddress};
     }
-
 
     std::vector<Scales> getAvailableScales()
     {
@@ -135,7 +196,7 @@ namespace blescales
     void maintainConnection()
     {
         if (bleScales.get() == nullptr)
-        { 
+        {
             remoteScalesScanner.initializeAsyncScan();
 
             std::vector<RemoteScales *> scales = remoteScalesScanner.getDiscoveredScales();
@@ -155,13 +216,13 @@ namespace blescales
             }
         }
         else if (!bleScales->isConnected())
-        { 
+        {
             Serial.println("Connection failed. Will retry.");
             remoteScalesScanner.stopAsyncScan();
             bleScales.release();
         }
         else if (bleScales->isConnected())
-        { 
+        {
             remoteScalesScanner.stopAsyncScan();
             bleScales->update();
         }
@@ -187,45 +248,68 @@ void setup()
 
 void loop()
 {
+
     if (Serial.available() > 0)
     {
         String input = Serial.readStringUntil('\n');
         switch (input[0])
         {
-            case 't':
-                blescales::tare();
-                break;
-            case 'c':
-                blescales::connect();
-                blescales::bMaintainConnection = true;
-                break;
-            case 'd':
-                blescales::disconnect();
-                blescales::bMaintainConnection = false;
-                break;
-            case 'r':
-                break;
-            case 'g':
-                if (input == "getDeviceCharacteristic")
+        case 't':
+            blescales::tare();
+            break;
+        case 'c':
+            blescales::connect();
+            blescales::bMaintainConnection = true;
+            break;
+        case 'd':
+            blescales::disconnect();
+            blescales::bMaintainConnection = false;
+            break;
+        case 'r':
+            break;
+        case 'b':
+            blescales::DisplayBattery();
+            break;
+        case 's':
+            blescales::startTimer();
+            break;
+        case 'p':
+            blescales::stopTimer();
+            break;
+        case 'e':
+            blescales::resetTimer();
+            break;
+        case 'g':
+            if (input == "getDeviceCharacteristic")
+            {
+                std::pair<std::string, std::string> deviceCharacteristic = blescales::getDeviceCharacteristic();
+                std::string name = deviceCharacteristic.first;
+                std::string address = deviceCharacteristic.second;
+                Serial.println(String("Name: ") + name.c_str());
+                Serial.println(String("Address: ") + address.c_str());
+            }
+            else if (input == "getAvailableScales")
+            {
+                auto scales = blescales::getAvailableScales();
+                for (auto scale : scales)
                 {
-                    std::pair<std::string, std::string> deviceCharacteristic = blescales::getDeviceCharacteristic();
-                    std::string name = deviceCharacteristic.first;
-                    std::string address = deviceCharacteristic.second;
-                    Serial.println(String("Name: ") + name.c_str());
-                    Serial.println(String("Address: ") + address.c_str());
+                    Serial.println(String("Name: ") + scale.name.c_str());
+                    Serial.println(String("Address: ") + scale.address.c_str());
                 }
-                else if (input == "getAvailableScales")
-                {
-                    auto scales = blescales::getAvailableScales();
-                    for (auto scale : scales)
-                    {
-                        Serial.println(String("Name: ") + scale.name.c_str());
-                        Serial.println(String("Address: ") + scale.address.c_str());
-                    }
-                }
-                break;
-            default:
-                break;
+            }
+            break;
+        default:
+            break;
         }
     }
+    if (oldCptWeightReceived != cptWeightReceived)
+    {
+        unsigned char time = blescales::getSeconds();
+        Serial.print("Time : ");
+        Serial.print(time);
+        Serial.print(" | Weight : ");
+        Serial.println(blescales::getWeight());
+    }
+
+    oldCptWeightReceived = cptWeightReceived;
 }
