@@ -3,6 +3,7 @@
 #include "remote_scales.h"
 #include "scales/acaia.h"
 #include <ctime>
+#include "oled/oled.h"
 
 struct Scales
 {
@@ -11,24 +12,39 @@ struct Scales
 };
 static uint64_t cptWeightReceived = 0;
 static uint64_t oldCptWeightReceived = cptWeightReceived;
+static float flowRate = 0;
 void onWeightReceived(float weight)
 {
-    // std::time_t t = std::time(nullptr);
-    // std::tm tm = *std::localtime(&t);
-    // char buffer[20];
-    // std::strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", &tm);
-    // Serial.println(String(buffer) + ";" + String(weight));
+    unsigned long currentTime = millis(); // Get the current time in milliseconds
+    Serial.println(String(currentTime) + ";" + String(weight));
 
-    // unsigned char time = blescales::getSeconds();
-    // Serial.print("Time : ");
-    // Serial.print(time);
-    // Serial.print(" | Weight : ");
-    // Serial.println(weight);
     cptWeightReceived++;
     if (cptWeightReceived > 1000000)
     {
         cptWeightReceived = 0;
     }
+    // calculate flow rate every 2 seconds
+
+    flowRate = calculateFlowRate(weight, currentTime);
+    
+}
+
+float calculateFlowRate(float weight, unsigned long newTime)
+{
+    Serial.println(String("New time: ") + newTime + "s");
+    static unsigned long oldTime = 0;
+    static float oldWeight = 0;
+    if (newTime == oldTime)
+    {
+        return 0;
+    }
+    // Calculate flow rate using delta weight and delta time 
+    float rate = (weight - oldWeight) / (newTime - oldTime) * 1000;
+    
+    oldWeight = weight;
+    oldTime = newTime;
+    Serial.println(String("Flow rate: ") + rate + "g/s");
+    return rate;
 }
 
 namespace blescales
@@ -124,6 +140,22 @@ namespace blescales
         return 0;
     }
 
+
+    float getFlowRate()
+    {
+        return flowRate;
+    }
+    
+
+    float getBattery()
+    {
+        if (bleScales.get() != nullptr)
+        {
+            return bleScales->getBattery();
+        }
+        return 0;
+    }
+
     std::pair<std::string, std::string> getDeviceCharacteristic()
     {
         std::string _deviceName;
@@ -169,13 +201,14 @@ namespace blescales
 
         for (;;)
         {
+            handleBleDevice();
+            maintainConnection();
+            vTaskDelay(500 / portTICK_PERIOD_MS);
+
             // Check if we need to maintain a connection to a scale.
             if (bMaintainConnection)
             {
-                handleBleDevice();
-                maintainConnection();
             }
-            vTaskDelay(1000 / portTICK_PERIOD_MS);
         }
     }
 
@@ -184,7 +217,7 @@ namespace blescales
         if (!BLEDevice::getInitialized())
         {
             Serial.println("Initializing BLE device...");
-            BLEDevice::init("ESP32 old-ACAIA LUNAR Scales Client");
+            BLEDevice::init("ESP32 old-ACAIA LUNAR");
         }
 
         if (BLEDevice::getInitialized())
@@ -197,6 +230,7 @@ namespace blescales
     {
         if (bleScales.get() == nullptr)
         {
+            displayLogo();
             remoteScalesScanner.initializeAsyncScan();
 
             std::vector<RemoteScales *> scales = remoteScalesScanner.getDiscoveredScales();
@@ -234,6 +268,7 @@ void setup()
     Serial.begin(250000);
     Serial.println("Starting up...");
 
+    init_display();
     blescales::init();
 
     xTaskCreatePinnedToCore(
@@ -241,7 +276,7 @@ void setup()
         "blescalesTask",          /* Name of the task */
         10000,                    /* Stack size in words */
         NULL,                     /* Task input parameter */
-        0,                        /* Priority of the task */
+        1,                        /* Priority of the task */
         NULL,                     /* Task handle. */
         0);                       /* Core where the task should run */
 }
@@ -302,14 +337,12 @@ void loop()
             break;
         }
     }
+    
     if (oldCptWeightReceived != cptWeightReceived)
     {
-        unsigned char time = blescales::getSeconds();
-        Serial.print("Time : ");
-        Serial.print(time);
-        Serial.print(" | Weight : ");
-        Serial.println(blescales::getWeight());
+        mainDisplay(blescales::getWeight(), blescales::getBattery(), blescales::getFlowRate());
     }
 
     oldCptWeightReceived = cptWeightReceived;
 }
+
